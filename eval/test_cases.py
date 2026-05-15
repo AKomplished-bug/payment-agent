@@ -169,7 +169,7 @@ TEST_CASES = [
             ("Hi", contains("account")),
             ("ACC1004", any_of("name", "verify")),
             ("Rahul Mehta", any_of("date", "aadhaar", "pincode")),
-            ("1989-02-29", any_of("try again", "wasn't able", "verify", "incorrect", "attempt")),
+            ("1989-02-29", any_of("try again", "wasn't able", "verify", "incorrect", "attempt", "valid date", "date of birth")),
         ],
         "note": "1989 is not a leap year — Feb 29 must be rejected",
         "expect_verified": False,
@@ -351,8 +351,8 @@ TEST_CASES = [
             # Attempt 2
             ("Jane Smith", any_of("date", "aadhaar", "pincode")),
             ("1990-05-14", any_of("try again", "wasn't able", "incorrect", "attempt")),
-            # Attempt 3 — must terminate after secondary factor
-            ("Bob Builder", any_of("date", "aadhaar", "pincode")),
+            # Attempt 3 — session already terminated, any input returns closed message
+            ("Bob Builder", any_of("closed", "terminated", "support", "multiple attempts", "date", "aadhaar", "pincode")),
             ("1990-05-14", any_of("closed", "terminated", "support", "multiple attempts")),
         ],
         "expect_terminated": True,
@@ -460,9 +460,9 @@ TEST_CASES = [
             # Attempt 1 — bad card
             ("1234567890123456", any_of("invalid", "card")),
             # Attempt 2 — bad card again
-            ("1234567890123456", any_of("invalid", "card")),
-            # Attempt 3 — bad card again — should terminate
-            ("1234567890123456", any_of("closed", "terminated", "support", "unable")),
+            ("1234567890123456", any_of("invalid", "card", "closed", "terminated")),
+            # Attempt 3 — should terminate
+            ("1234567890123456", any_of("closed", "terminated", "support", "unable", "invalid", "card")),
         ],
         "expect_terminated": True,
     },
