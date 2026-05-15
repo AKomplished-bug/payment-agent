@@ -83,11 +83,19 @@ Rather than two separate calls (one to extract, one to respond), we use one call
 
 Latency is not a stated requirement for this assignment, but the single-call design matters significantly in voice deployments where every 100ms of added LLM latency is perceptible to the caller. Hardcoded responses for deterministic outcomes (account lookup, verification pass/fail, errors) also eliminate LLM latency on those turns entirely.
 
-### 3. Context Isolation — LLM Never Sees Raw Sensitive Data
+### 3. No Examples in Prompts
+
+System prompts describe what to extract and the expected schema, but contain no input/output examples. Examples anchor the LLM to specific patterns — in practice this causes it to expect inputs that resemble the example rather than handling the full variety of real user inputs. Field descriptions and schema constraints are sufficient; the LLM's own language understanding handles the rest.
+
+### 4. Context-Scoped Prompt Injection
+
+Prompts are split into three layers — `_CORE_RULES` (always injected), `_SECURITY_RULES` (identity and balance phases only), and `_STORE_INFO_RULE` (tool-enabled phases only). Only the rules relevant to the current phase are injected. This avoids prompt bloating — a well-known driver of hallucination where a large, unfocused prompt causes the LLM to confuse rules from one context with decisions in another. 7 of 9 phases receive a leaner prompt as a result.
+
+### 5. Context Isolation — LLM Never Sees Raw Sensitive Data
 
 After account lookup, `account_data` (containing DOB, Aadhaar last 4, pincode) is stored in Python state only. The LLM system prompt receives only non-sensitive context like account holder name and balance (and only after verification). This makes data leakage structurally impossible rather than relying on prompt-level instructions.
 
-### 4. Strict Verification — Exact Match Only
+### 6. Strict Verification — Exact Match Only
 
 The assignment requires strict name matching (no fuzzy). `verify_identity()` in `verification.py` uses `==` for name comparison. The LLM's job is only to extract the name exactly as the user stated it — we do not normalize case or strip whitespace beyond what the user typed.
 
@@ -96,11 +104,11 @@ Secondary factors (DOB, Aadhaar, pincode) are normalized before comparison:
 - Aadhaar: digits only, must be exactly 4
 - Pincode: digits only, must be exactly 6
 
-### 5. Pre-API Validation
+### 7. Pre-API Validation
 
 Card details are validated locally (Luhn check, CVV length, expiry) before calling the payment API. This catches most errors client-side, gives better error messages, and reduces unnecessary API calls.
 
-### 6. Retry Limits
+### 8. Retry Limits
 
 | Operation | Limit | On Exhaustion |
 |---|---|---|
@@ -108,7 +116,7 @@ Card details are validated locally (Luhn check, CVV length, expiry) before calli
 | Identity verification | 3 | Terminate session |
 | Payment (retryable errors) | 3 | Terminate session |
 
-### 7. OpenAI-Compatible LLM Interface
+### 9. OpenAI-Compatible LLM Interface
 
 The LLM client uses the `openai` SDK with configurable `base_url` and `api_key`. This makes the agent provider-agnostic — Claude, Gemini, or any OpenAI-compatible endpoint works via environment variables.
 
