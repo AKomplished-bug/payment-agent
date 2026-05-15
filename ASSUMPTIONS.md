@@ -94,6 +94,24 @@ Documented assumptions where the assignment was ambiguous.
 
 ---
 
+## 11. English-only conversation
+
+**Assignment does not specify** language support requirements.
+
+**Assumption:** The agent handles English-only conversations. System prompts, error messages, and all hardcoded responses are in English. The LLM may understand other languages incidentally, but no multilingual support is designed or tested.
+
+**Rationale:** The assignment sample conversations are all in English, the test accounts use English names, and no language-switching requirement is mentioned. In production this would be a meaningful consideration — particularly for an Indian payments context where users may speak Hindi, Tamil, Telugu, etc.
+
+---
+
+## 12. No date/time context injected into prompts
+
+**Assignment does not require** the agent to be aware of the current date or time.
+
+**Assumption:** Current date/time is not injected into the LLM prompt. Card expiry validation is handled entirely in Python (`is_card_expired()` calls `date.today()` directly) — the LLM never decides whether a card is expired. The one consequence: if a user says "my card expires next month", the LLM cannot resolve that to an actual month/year and will ask them to provide it explicitly. This is an acceptable extraction limitation.
+
+---
+
 ## 10. Session is single-use
 
 **Assignment does not specify** whether a session can be restarted after termination.

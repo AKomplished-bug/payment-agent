@@ -124,6 +124,11 @@ The LLM client uses the `openai` SDK with configurable `base_url` and `api_key`.
 | Phase safety check | Regex on LLM response vs. current phase | Balance disclosure before verification, card collection before balance |
 | Deterministic state | All state mutations in Python only | LLM cannot skip steps via output |
 | Pre-API validation | Luhn, expiry, amount checks | Malformed payloads reaching the API |
+| Critical value check | Post-LLM string assertion on balance + transaction ID | LLM hallucinating wrong figures in response |
+
+**Post-LLM processing is intentionally minimal** — this is a text chat agent, so there is no TTS layer to protect. The main post-LLM concerns (data leakage, phase safety, critical value correctness) are all covered above.
+
+One known gap: some models (particularly reasoning/thinking models) occasionally bleed internal thought tokens into the response field — e.g. `{"thought": "..."}` fragments or `<thinking>` blocks appearing in the user-facing message. The current JSON parse extracts only `response`, which mitigates most cases, but a dedicated post-parse strip of thinking tags and stray JSON fragments would make this robust. If a voice/TTS layer were added, this would expand significantly — markdown stripping, number-to-speech normalization, repetition loop detection, emoji removal, etc. — to ensure LLM output is audio-safe before synthesis.
 
 ---
 
@@ -180,6 +185,8 @@ In voice deployments, users commonly dictate card numbers in chunks across multi
 
 **LLM extraction is not perfect.** The LLM might occasionally misparse a date or card number from unusual input. We mitigate this with normalization functions and validation, but truly adversarial or incoherent input may still fail extraction. A more robust approach would add a second confirmation step for extracted values.
 
+**Extracted field values are not post-validated against what the user said.** If the LLM halluccinates an extracted value (e.g. returns a slightly wrong card number), Python has no way to catch it before use. The mitigation is structural: for identity fields, a hallucinated value simply fails the deterministic `verify_identity()` check and burns a retry — it cannot silently pass. For card fields, the Luhn check and API validation act as the safety net. The risk is low in practice but not zero.
+
 **Single LLM call per turn means extraction errors affect the response.** If extraction fails silently, the LLM might generate an appropriate-sounding response while returning `null` for the extracted field. This is caught on the next turn when we check if the field is still missing.
 
 **Name matching is exact (by design).** Names are title-cased in Python after extraction (not by the LLM) to handle users who type in lowercase. Spelling must still match exactly — this is normalization, not a fuzzy workaround.
@@ -222,6 +229,36 @@ In this text-based implementation, names are extracted by the LLM and title-case
 
 ---
 
+## Evaluation Approach
+
+### What "Correct" Means Per Step
+
+| Step | Correct means |
+|---|---|
+| Greeting | Agent asks for account ID; does not reveal any account data |
+| Account lookup | Agent calls API with extracted account ID; handles 404 and network errors gracefully |
+| Identity collection | Agent asks for name + secondary factor; does not re-ask for info already provided; does not expose what it's comparing against |
+| Identity verification | Passes only when name AND secondary factor match exactly; fails clearly and counts retries; terminates after 3 failures |
+| Balance disclosure | Correct balance figure appears in response; only shown after verification passes |
+| Payment collection | Agent collects all required card fields; accumulates partial card digits across turns; does not echo card data back |
+| Payment processing | API called with correct validated payload; success returns transaction ID in response; retryable errors re-prompt; terminal errors close session |
+| Closing | Transaction ID and amount paid both appear in response |
+| Termination | Session closes cleanly; no sensitive data in final message |
+
+### How Correctness Is Measured
+
+Each test turn has an assertion function — `contains`, `not_contains`, `any_of`, `all_of`, `none_of` — applied to the agent's response string. A turn passes if its assertion returns true.
+
+This catches: wrong phase transitions, data leakage, missing required values, premature step completion, and incorrect error handling. It does not assess tone or naturalness — an LLM judge (see improvements section) would be needed for that.
+
+### Observations — Where the Agent Can Struggle
+
+- **LLM extraction on unusual input** — very unusual date formats or heavily accented transcriptions may return null instead of a parsed value, prompting the user to re-enter rather than failing outright.
+- **Name confirmation loop** — if a user keeps giving ambiguous responses to the name confirmation question, the agent will ask again rather than consuming a verification attempt, which is correct but could feel repetitive.
+- **Partial card + correction** — if a user provides 8 digits, then says "actually let me start over" without giving a full 16-digit number, the agent may not cleanly reset the partial.
+
+---
+
 ## What I Would Improve With More Time
 
 1. **Extraction confirmation step** — after extracting name and secondary factor, show the user what was understood ("I understood your name as 'Nithin Jain' — is that correct?") before comparing. This catches LLM extraction errors before they burn a verification attempt.
@@ -230,7 +267,7 @@ In this text-based implementation, names are extracted by the LLM and title-case
 
 3. **Conversation persistence** — serialize `ConversationState` to Redis or a database so sessions survive process restarts and can be resumed.
 
-4. **LLM fallback chain** — if the primary LLM call fails, retry with a simpler extraction-only prompt before falling back to a static response.
+4. **LLM fallback chain** — the current implementation retries once on transient errors (timeout, rate limit, 5xx). If both attempts fail, the agent returns a safe static response and the user can retry the turn. A stronger approach would route through [OpenRouter](https://openrouter.ai) on total failure, switching to a backup model (e.g. gemini-flash → gpt-4o-mini) at runtime to survive full provider outages without dropping the session.
 
 5. **Evaluation with LLM judge** — the current eval uses substring assertions. A better approach would use a separate LLM to judge response quality (was the tone appropriate? did it ask for the right thing?).
 

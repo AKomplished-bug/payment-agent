@@ -182,6 +182,55 @@ Agent: I need to verify your identity before we proceed.
        [Verification is NOT skipped — state machine enforces this]
 ```
 
+### 6. Edge Case — Name Volunteered Early (Cache + Confirmation)
+
+```
+Agent: Hello! To get started, could you please share your account ID?
+
+User:  hey it's Rahul Mehta, my account is ACC1004
+
+Agent: Thank you! Let me look up your account.
+       Could you confirm — is your full name Rahul Mehta?
+
+User:  yes
+
+Agent: To verify your identity, could you provide your date of birth,
+       Aadhaar last 4 digits, or pincode?
+
+User:  I was born on 29th February 1988
+
+Agent: Identity verified successfully. Welcome, Rahul Mehta!
+       Your outstanding balance is ₹3,200.50. How much would you like to pay?
+       [Name cached from greeting turn, confirmed before verification proceeds]
+       [Ordinal DOB parsed correctly; 1988-02-29 validated as real leap year date]
+```
+
+### 7. Edge Case — Card Number Dictated in Parts
+
+```
+[... ACC1001 verified as Nithin Jain, full amount ₹1,250.75 ...]
+
+Agent: I'll need your card details to proceed. Please share your card number.
+
+User:  4532 0151
+
+Agent: Got 8 digits so far — please share the remaining 8 digits.
+
+User:  1283 0366
+
+Agent: Thank you. Could you please provide the expiry date of your card?
+
+User:  expires December 2027
+
+Agent: Got it. And your CVV?
+
+User:  123
+
+Agent: Your payment of ₹1,250.75 has been processed successfully.
+       Your transaction ID is txn_1762510325322_l1fl4oy. Thank you, Nithin!
+       [Digits accumulated across turns — count reported, never echoed back]
+```
+
 ---
 
 ## Architecture

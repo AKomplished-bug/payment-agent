@@ -1,7 +1,8 @@
 import os
 import json
+import time
 from typing import Optional, Callable
-from openai import OpenAI
+from openai import OpenAI, APITimeoutError, APIConnectionError, InternalServerError, RateLimitError
 from logger import logger
 
 _client: Optional[OpenAI] = None
@@ -20,6 +21,20 @@ def get_client() -> OpenAI:
 MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 
 
+# Errors worth retrying once — transient infrastructure issues
+_RETRYABLE = (APITimeoutError, APIConnectionError, InternalServerError, RateLimitError)
+
+
+def _do_llm_call(client: OpenAI, **kwargs) -> object:
+    """
+    Single attempt at a chat completion. Separated so the retry wrapper can call it twice.
+    If retry also fails, callers should fall back to a safe static response.
+    # Future: if both attempts fail, route through OpenRouter with a fallback model
+    # (e.g. gemini-flash → gpt-4o-mini) to survive provider outages at runtime.
+    """
+    return client.chat.completions.create(**kwargs)
+
+
 def extract_and_respond(
     system_prompt: str,
     conversation_history: list[dict],
@@ -31,6 +46,7 @@ def extract_and_respond(
     Single LLM call returning extracted structured data and a user-facing response.
     Optionally supports tool calling — if the LLM calls a tool, the handler is invoked
     and the result is fed back before getting the final JSON response.
+    Retries once on transient errors (timeout, connection error, rate limit, 5xx).
     """
     messages = [
         {"role": "system", "content": system_prompt},
@@ -52,7 +68,18 @@ def extract_and_respond(
     else:
         kwargs["response_format"] = {"type": "json_object"}
 
-    completion = client.chat.completions.create(**kwargs)
+    for attempt in range(2):
+        try:
+            completion = _do_llm_call(client, **kwargs)
+            break
+        except _RETRYABLE as e:
+            if attempt == 0:
+                logger.warning(f"LLM transient error (attempt 1), retrying in 1s | {e}")
+                time.sleep(1)
+            else:
+                logger.error(f"LLM transient error (attempt 2), giving up | {e}")
+                raise
+
     response_msg = completion.choices[0].message
 
     # Handle tool calls if any
@@ -70,12 +97,23 @@ def extract_and_respond(
 
         # Follow-up call to get the actual JSON response after tool use
         logger.debug("LLM follow-up call after tool use")
-        completion = client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            response_format={"type": "json_object"},
-            temperature=0.1,
-        )
+        for attempt in range(2):
+            try:
+                completion = _do_llm_call(
+                    client,
+                    model=MODEL,
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                )
+                break
+            except _RETRYABLE as e:
+                if attempt == 0:
+                    logger.warning(f"LLM follow-up transient error (attempt 1), retrying in 1s | {e}")
+                    time.sleep(1)
+                else:
+                    logger.error(f"LLM follow-up transient error (attempt 2), giving up | {e}")
+                    raise
         response_msg = completion.choices[0].message
 
     raw = response_msg.content
