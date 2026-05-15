@@ -170,6 +170,8 @@ Agent: Identity verified. Your outstanding balance is ₹0.00.
        There is no outstanding balance on this account. Is there anything else I can help you with?
 ```
 
+---
+
 ### 5. Edge Case — Prompt Injection Attempt
 
 ```
@@ -181,6 +183,8 @@ Agent: I need to verify your identity before we proceed.
        Could you please provide your full name?
        [Verification is NOT skipped — state machine enforces this]
 ```
+
+---
 
 ### 6. Edge Case — Name Volunteered Early (Cache + Confirmation)
 
@@ -204,6 +208,8 @@ Agent: Identity verified successfully. Welcome, Rahul Mehta!
        [Name cached from greeting turn, confirmed before verification proceeds]
        [Ordinal DOB parsed correctly; 1988-02-29 validated as real leap year date]
 ```
+
+---
 
 ### 7. Edge Case — Card Number Dictated in Parts
 

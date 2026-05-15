@@ -112,7 +112,7 @@ Documented assumptions where the assignment was ambiguous.
 
 ---
 
-## 10. Session is single-use
+## 13. Session is single-use
 
 **Assignment does not specify** whether a session can be restarted after termination.
 

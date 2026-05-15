@@ -277,8 +277,4 @@ This catches: wrong phase transitions, data leakage, missing required values, pr
 
 ## Assumptions Made
 
-- **Name matching is case-sensitive** as stated ("strict — no fuzzy matching, no case-insensitive workarounds")
-- **Cardholder name defaults to account holder name** if not explicitly provided on the card
-- **Session is single-use** — once TERMINATED or CLOSING, the agent stays in that state
-- **Partial payments are allowed** as noted in the API docs
-- **1988-02-29 (ACC1004) is a valid date** — 1988 was a leap year, so Feb 29 exists
+All documented assumptions are in `ASSUMPTIONS.md`.
