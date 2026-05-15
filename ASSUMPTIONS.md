@@ -40,7 +40,7 @@ Documented assumptions where the assignment was ambiguous.
 
 ---
 
-## 3. Name matching is case-sensitive (after normalization)
+## 4. Name matching is case-sensitive (after normalization)
 
 **Assignment says:** "Matching is strict — no fuzzy matching, no case-insensitive workarounds for names."
 
@@ -50,7 +50,7 @@ Documented assumptions where the assignment was ambiguous.
 
 ---
 
-## 3. Retry limit scope
+## 5. Retry limit scope
 
 **Assignment says:** "Allow reasonable retries but implement a sensible retry limit."
 
@@ -58,7 +58,7 @@ Documented assumptions where the assignment was ambiguous.
 
 ---
 
-## 4. Partial payments on zero balance
+## 6. Partial payments on zero balance
 
 **Assignment says:** ACC1003 has ₹0.00 balance. The API allows partial payments (amount ≤ balance).
 
@@ -66,7 +66,7 @@ Documented assumptions where the assignment was ambiguous.
 
 ---
 
-## 5. Card is the only payment method
+## 7. Card is the only payment method
 
 **Assignment says:** The `process_payment` API accepts card details (number, CVV, expiry, cardholder name).
 
@@ -74,7 +74,7 @@ Documented assumptions where the assignment was ambiguous.
 
 ---
 
-## 6. Cardholder name defaults to account holder name
+## 8. Cardholder name defaults to account holder name
 
 **Assignment says:** "cardholder_name is accepted as-is and not validated against the account holder's name."
 
@@ -82,7 +82,7 @@ Documented assumptions where the assignment was ambiguous.
 
 ---
 
-## 7. Partial card number — digit count only, no echo
+## 9. Partial card number — digit count only, no echo
 
 **Situation:** User dictates a card number across multiple turns and asks the agent to repeat what it has so far ("can you repeat the numbers I said?").
 
@@ -94,7 +94,7 @@ Documented assumptions where the assignment was ambiguous.
 
 ---
 
-## 6. Session is single-use
+## 10. Session is single-use
 
 **Assignment does not specify** whether a session can be restarted after termination.
 

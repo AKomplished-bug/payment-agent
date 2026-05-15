@@ -131,21 +131,9 @@ The LLM client uses the `openai` SDK with configurable `base_url` and `api_key`.
 
 The assignment requires the agent to not re-ask for information already provided, even if it was volunteered before being asked (e.g. user gives their name during the greeting turn).
 
-**Approaches considered:**
+**Approach — `store_info` tool call:**
 
-1. **Per-turn cache** — extract identity fields from every user message regardless of phase, store in a running cache. Simple in theory but requires an LLM extraction call on every turn (greeting, account lookup, payment collection) even when the user is saying "yes" or giving a card number. Wasteful and the intent ambiguity problem remains ("hey its sachin" — is "sachin" a name?).
-
-2. **History scan on phase entry** — run a dedicated LLM call once when entering `IDENTITY_COLLECTION`, scanning all prior turns. Solves the problem but costs an extra LLM call and adds complexity.
-
-3. **History-aware extraction prompt (current approach)** — the `IDENTITY_COLLECTION` LLM call already receives the full conversation history. The prompt instructs it to look back through prior messages for anything already provided, in addition to the current input. State merge guards (`and not self.state.provided_X`) prevent overwriting already-set fields.
-
-**Why option 3:** Zero extra LLM calls, no new code paths, and the LLM is already the best tool for resolving intent ambiguity from prior messages. The guard prevents re-extraction from corrupting already-confirmed values.
-
-**Remaining limitation:** If the user said something ambiguous early ("hey its sachin") the LLM might or might not extract it as a name depending on context. This is an inherent NLU problem — no architecture fully solves it without a confirmation step.
-
-**Final approach — `store_info` tool call:**
-
-Rather than scanning history or caching per-turn, the LLM is given a `store_info` tool it can call at any phase whenever the user volunteers information not yet needed. This is proper LLM tool use — the model decides when to call it based on what the user said.
+The LLM is given a `store_info` tool it can call at any phase whenever the user volunteers information not yet needed. The model decides when to call it based on what the user said — no history scanning, no per-turn extraction overhead.
 
 ```
 User: "hey its rahul mehta"  (during GREETING)
@@ -153,18 +141,24 @@ LLM: detects name → calls store_info(full_name="Rahul Mehta")
 InfoCache: {full_name: "Rahul Mehta"}
 
 IDENTITY_COLLECTION starts:
-→ cache seeds state: provided_name = "Rahul Mehta"
-→ agent skips asking for name, asks for secondary factor directly
+→ cache seeds state.provided_name = "Rahul Mehta", name_needs_confirmation = True
+→ agent asks: "Could you confirm — is your full name Rahul Mehta?"
+→ user confirms → proceed to secondary factor
+→ agent skips asking for name entirely
 ```
 
-- **Name** — seeded from cache but confirmed with the user before verification proceeds. Confirms LLM extraction accuracy without burning a verification attempt.
-  - If the cached name is a single word, the agent asks "I have your first name as X — could you share your full name?" rather than treating it as confirmed. The user can provide a full name (replaces cached value) or explicitly confirm the single word is their complete legal name (mononym accepted).
-- **Secondary factors** (DOB, Aadhaar, pincode) — seeded silently, no echo back to user (prevents indirect leakage if verification fails). If a silently-seeded value is wrong, verification fails and the user re-enters it — acceptable since the retry budget is 3.
-- **`store_info` only called during phases with `use_tools=True`** — GREETING and IDENTITY_COLLECTION. Payment phases don't expose this tool to avoid confusion with card fields.
+**Name confirmation flow:**
 
-**Tradeoff — confirm name but not secondary factors:**
+Cached names are confirmed before verification proceeds — this catches LLM extraction errors without burning a verification attempt. Two cases:
 
-We considered confirming all cached identity fields before verification. The constraint is that secondary factors (DOB, Aadhaar, pincode) must never be echoed back to the user — echoing them before verification creates an indirect leakage risk (an attacker who guessed a value could confirm it by watching the agent reflect it back). Name is safe to confirm because it is non-sensitive and was already spoken aloud in the conversation. Secondary factors are handled by silent seeding + verification failure as the correction mechanism.
+- **Multi-word cached name** → "Could you confirm — is your full name Rahul Mehta?"  
+  User says yes (confirmed) or gives a correction (replaces cached value).
+- **Single-word cached name** → "Is Rahul your full name? If not, could you please share your full name?"  
+  Handles mononyms (user confirms it's complete) and partial captures (user gives full name).
+
+**Secondary factors (DOB, Aadhaar, pincode)** — seeded from cache silently, no echo back to the user. Echoing them before verification creates an indirect leakage risk: an attacker who guessed a value could confirm it by watching the agent reflect it back. Name is safe to confirm because it is non-sensitive and was already spoken aloud. Secondary factors use silent seeding + verification failure as the correction mechanism.
+
+**`store_info` is only available during phases with `use_tools=True`** — GREETING and IDENTITY_COLLECTION. Payment phases don't expose this tool to avoid confusion with card fields.
 
 ---
 
